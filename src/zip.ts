@@ -4,6 +4,7 @@ import * as exfs from "./fs";
 import * as path from "path";
 import * as util from "./util";
 import { Cancelable, CancellationToken } from "./cancelable";
+import * as matcher from 'matcher';
 
 interface ZipEntry {
     path: string;
@@ -21,6 +22,11 @@ export interface IZipOptions {
      * The default value is `false`.
      */
     followSymlinks?: boolean;
+
+    /**
+     * Ignore files that follow a certain glob style pattern.
+     */
+    ignorePattern: Array<string>;
 }
 
 /**
@@ -140,25 +146,27 @@ export class Zip extends Cancelable {
     }
 
     private async addEntry(zip: yazl.ZipFile, entry: exfs.FileEntry, file: ZipEntry, token: CancellationToken): Promise<void> {
-        if (entry.isSymbolicLink) {
-            if (this.followSymlink()) {
-                if (entry.type === "dir") {
-                    const realPath = await util.realpath(file.path);
-                    await this.walkDir([{ path: realPath, metadataPath: file.metadataPath }], token);
+        if (!this.ignoreFile(file)) {
+            if (entry.isSymbolicLink) {
+                if (this.followSymlink()) {
+                    if (entry.type === "dir") {
+                        const realPath = await util.realpath(file.path);
+                        await this.walkDir([{path: realPath, metadataPath: file.metadataPath}], token);
+                    } else {
+                        zip.addFile(file.path, file.metadataPath!);
+                    }
                 } else {
-                    zip.addFile(file.path, file.metadataPath!);
+                    await this.addSymlink(zip, entry, file.metadataPath!);
                 }
             } else {
-                await this.addSymlink(zip, entry, file.metadataPath!);
-            }
-        } else {
-            if (entry.type === "dir") {
-                zip.addEmptyDirectory(file.metadataPath!, {
-                    mtime: entry.mtime,
-                    mode: entry.mode
-                });
-            } else {
-                await this.addFileStream(zip, entry, file.metadataPath!, token);
+                if (entry.type === "dir") {
+                    zip.addEmptyDirectory(file.metadataPath!, {
+                        mtime: entry.mtime,
+                        mode: entry.mode
+                    });
+                } else {
+                    await this.addFileStream(zip, entry, file.metadataPath!, token);
+                }
             }
         }
     }
@@ -222,6 +230,16 @@ export class Zip extends Cancelable {
             this.zipStream.destroy(err);
             this.isPipe = false;
         }
+    }
+
+    private ignoreFile(file: ZipEntry): boolean {
+        if (typeof this.options?.ignorePattern === 'object') {
+            const result = matcher([file.path], this.options?.ignorePattern)
+            if (result.length !== 0) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private followSymlink(): boolean {

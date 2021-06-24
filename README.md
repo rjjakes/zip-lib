@@ -346,6 +346,9 @@ Returns: `void`
 Object
 - `followSymlinks?`: Boolean (optional) - Indicates how to handle when the given path is a symbolic link. The default value is `false`.<br>`true`: add the target of the symbolic link to the zip.<br>`false`: add symbolic link itself to the zip.
 
+
+- ignorePattern?: Array (optional) - an array of GLOB style strings to ignore. <br>For example: `['.git/*', '*.zip']`
+
 ### Options: IExtractOptions <a id="iextractoptions"></a>
 
 Object
